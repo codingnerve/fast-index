@@ -5,7 +5,12 @@
       "Bash(npx tsc *)",
       "Bash(echo \"EXIT=$?\")",
       "Bash(DATABASE_URL=\"mongodb+srv://user:pass@cluster0.abcde.mongodb.net/indexfast?retryWrites=true&w=majority\" npx prisma validate)",
-      "Bash(DATABASE_URL=\"mongodb+srv://u:p@c.mongodb.net/indexfast\" AUTH_SECRET=\"x\" npx next build)"
+      "Bash(DATABASE_URL=\"mongodb+srv://u:p@c.mongodb.net/indexfast\" AUTH_SECRET=\"x\" npx next build)",
+      "Bash(git check-ignore *)",
+      "Bash(DATABASE_URL=\"mongodb+srv://u:p@c.mongodb.net/indexfast\" npx prisma validate)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }
