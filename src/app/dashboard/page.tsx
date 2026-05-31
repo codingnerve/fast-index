@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { IndexJob } from "@/lib/models";
 import { FREE_MODE } from "@/lib/config";
 import { SubmitForm } from "./SubmitForm";
 import { ApiKeys } from "./ApiKeys";
@@ -10,11 +11,10 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const jobs = await prisma.indexJob.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-  });
+  await dbConnect();
+  const jobs = await IndexJob.find({ userId: String(user._id) })
+    .sort({ createdAt: -1 })
+    .limit(10);
 
   const engineConfigured = {
     indexnow: !!process.env.INDEXNOW_KEY,
@@ -84,7 +84,7 @@ export default async function DashboardPage() {
               </thead>
               <tbody>
                 {jobs.map((j) => (
-                  <tr key={j.id} className="border-t border-slate-100">
+                  <tr key={String(j._id)} className="border-t border-slate-100">
                     <td className="px-4 py-2 text-slate-600">
                       {j.createdAt.toLocaleString()}
                     </td>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { ApiKey } from "@/lib/models";
 import { getUserId } from "@/lib/auth";
 import { generateApiKey } from "@/lib/apikey";
 
@@ -10,19 +11,10 @@ export async function GET() {
   if (!userId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
-  const keys = await prisma.apiKey.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      label: true,
-      prefix: true,
-      revoked: true,
-      requests: true,
-      lastUsedAt: true,
-      createdAt: true,
-    },
-  });
+  await dbConnect();
+  const keys = await ApiKey.find({ userId })
+    .sort({ createdAt: -1 })
+    .select("label prefix revoked requests lastUsedAt createdAt");
   return NextResponse.json({ keys });
 }
 
@@ -39,7 +31,8 @@ export async function POST(req: Request) {
   const label = parsed.success ? parsed.data.label : "Default";
 
   const { full, hash, prefix } = generateApiKey();
-  await prisma.apiKey.create({ data: { userId, label, hash, prefix } });
+  await dbConnect();
+  await ApiKey.create({ userId, label, hash, prefix });
 
   return NextResponse.json({ key: full, prefix, label });
 }

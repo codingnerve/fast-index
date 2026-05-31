@@ -10,7 +10,10 @@
       "Bash(DATABASE_URL=\"mongodb+srv://u:p@c.mongodb.net/indexfast\" npx prisma validate)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git rm *)",
+      "Bash(rm -rf prisma)",
+      "Bash(npm install *)"
     ]
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { User, CreditTransaction } from "@/lib/models";
 import { hashPassword, createSession } from "@/lib/auth";
 
 const schema = z.object({
@@ -20,21 +21,24 @@ export async function POST(req: Request) {
   }
 
   const { email, password, name } = parsed.data;
-  const existing = await prisma.user.findUnique({ where: { email } });
+  await dbConnect();
+  const existing = await User.findOne({ email });
   if (existing) {
     return NextResponse.json({ error: "Email already registered" }, { status: 409 });
   }
 
-  const user = await prisma.user.create({
-    data: {
-      email,
-      name,
-      passwordHash: await hashPassword(password),
-      credits: 10, // free trial
-      transactions: { create: { amount: 10, reason: "signup_bonus" } },
-    },
+  const user = await User.create({
+    email,
+    name,
+    passwordHash: await hashPassword(password),
+    credits: 10, // free trial
+  });
+  await CreditTransaction.create({
+    userId: String(user._id),
+    amount: 10,
+    reason: "signup_bonus",
   });
 
-  await createSession(user.id);
+  await createSession(String(user._id));
   return NextResponse.json({ ok: true });
 }

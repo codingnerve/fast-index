@@ -1,6 +1,7 @@
 // API key generation, hashing, lookup, and a simple in-memory rate limiter.
 import crypto from "crypto";
-import { prisma } from "./db";
+import { dbConnect } from "./db";
+import { ApiKey } from "./models";
 
 const PREFIX = "ifk_"; // IndexFast Key
 
@@ -19,14 +20,15 @@ export function hashApiKey(full: string): string {
 /** Look up the owning user for a presented key, or null. Bumps usage stats. */
 export async function authenticateApiKey(full: string) {
   if (!full.startsWith(PREFIX)) return null;
+  await dbConnect();
   const hash = hashApiKey(full);
-  const key = await prisma.apiKey.findUnique({ where: { hash } });
+  const key = await ApiKey.findOne({ hash });
   if (!key || key.revoked) return null;
-  await prisma.apiKey.update({
-    where: { id: key.id },
-    data: { lastUsedAt: new Date(), requests: { increment: 1 } },
-  });
-  return { userId: key.userId, keyId: key.id };
+  await ApiKey.updateOne(
+    { _id: key._id },
+    { $set: { lastUsedAt: new Date() }, $inc: { requests: 1 } }
+  );
+  return { userId: key.userId as string, keyId: String(key._id) };
 }
 
 // ---- Simple fixed-window rate limiter (per-instance, in-memory) ----

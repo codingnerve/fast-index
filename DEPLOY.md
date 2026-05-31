@@ -4,8 +4,8 @@ This app now runs in **FREE_MODE by default**: every signed-up user can submit
 unlimited URLs with no credits and no payment. The Razorpay code stays in the
 repo but is never used (don't set the `RAZORPAY_*` env vars).
 
-SQLite (the old local default) can't run on Vercel's serverless filesystem, so
-production uses **MongoDB Atlas**. The schema is already set to `mongodb`.
+The app uses **MongoDB Atlas** via Mongoose. There is no build-time codegen or
+schema migration step — collections are created automatically on first write.
 
 ---
 
@@ -26,17 +26,17 @@ production uses **MongoDB Atlas**. The schema is already set to `mongodb`.
    ```
    Replace `USER`/`PASSWORD` with the user from step 3. This is your `DATABASE_URL`.
 
-> Atlas M0 runs as a replica set, which Prisma needs for the transaction in
-> the indexing code — so the free tier is enough.
+> Atlas M0 (free) is fine — no replica-set or extra setup needed.
 
-## 2. Push the schema to that database
+## 2. No schema push needed
 
-Run once from your machine, pointing at the prod URL (PowerShell):
+Mongoose creates the collections automatically the first time the app writes to
+them (e.g. when you sign up). You can skip straight to deploying. If you want to
+verify the connection string locally first:
 ```powershell
 $env:DATABASE_URL="mongodb+srv://USER:PASSWORD@cluster0.abcde.mongodb.net/indexfast?retryWrites=true&w=majority"
-npx prisma db push
+npm run dev   # sign up at http://localhost:3000/signup — a `users` doc appears in Atlas
 ```
-(bash: `DATABASE_URL="mongodb+srv://..." npx prisma db push`)
 
 ## 3. Push the code to GitHub
 
@@ -49,7 +49,7 @@ gh repo create indexfast --private --source=. --push
 
 - vercel.com → Add New → Project → import the repo.
 - Framework preset: **Next.js** (auto-detected). Build command stays
-  `npm run build` (it runs `prisma generate` first).
+  `npm run build` (just `next build` — no codegen step).
 
 ## 5. Set Environment Variables (Vercel → Settings → Environment Variables)
 
@@ -81,8 +81,8 @@ background queue/cron — otherwise upgrade to Vercel Pro for longer limits.
 
 ## Common MongoDB Atlas gotchas
 
-- **`prisma db push` hangs or "server selection timeout"** → you skipped
-  Network Access. Atlas → Network Access → allow `0.0.0.0/0`.
+- **"server selection timeout" / app can't connect** → you skipped Network
+  Access. Atlas → Network Access → allow `0.0.0.0/0`.
 - **"authentication failed"** → wrong DB user/password, or your password has
   special characters (`@ : / ? # &`). URL-encode them in the string (e.g.
   `@` → `%40`, `#` → `%23`).

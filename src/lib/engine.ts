@@ -1,7 +1,8 @@
 // Job orchestrator: ties validation → credit reservation → submission →
 // status persistence together. Used by the /api/submit route.
 
-import { prisma } from "./db";
+import { dbConnect } from "./db";
+import { User, IndexJob, IndexUrl, CreditTransaction, isValidId } from "./models";
 import { parseUrlList } from "./validate";
 import { submitToIndexNow, type SubmitResult } from "./indexnow";
 import { submitToGoogle } from "./google";
@@ -17,13 +18,15 @@ export async function runIndexJob(params: {
 }) {
   const { userId, rawLines, engine, source } = params;
 
+  await dbConnect();
+
   // 1. Validate / dedup / normalize before touching credits.
   const parsed = parseUrlList(rawLines);
   const toSubmit = parsed.valid;
 
   // 2. Check credit balance — we charge 1 credit per URL we attempt to submit.
   // Skipped entirely in free mode.
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = isValidId(userId) ? await User.findById(userId) : null;
   if (!user) throw new Error("User not found");
 
   if (!FREE_MODE && user.credits < toSubmit.length) {
@@ -31,51 +34,45 @@ export async function runIndexJob(params: {
       ok: false as const,
       error: "INSUFFICIENT_CREDITS",
       need: toSubmit.length,
-      have: user.credits,
+      have: user.credits as number,
     };
   }
 
   // 3. Create the job record.
-  const job = await prisma.indexJob.create({
-    data: {
-      userId,
-      source,
-      engine,
-      total: rawLines.length,
-      duplicates: parsed.duplicates.length,
-      invalid: parsed.invalid.length,
-      status: "processing",
-    },
+  const job = await IndexJob.create({
+    userId,
+    source,
+    engine,
+    total: rawLines.length,
+    duplicates: parsed.duplicates.length,
+    invalid: parsed.invalid.length,
+    status: "processing",
   });
+  const jobId = String(job._id);
 
   // Record invalid + duplicate rows for transparency in the UI.
   if (parsed.invalid.length || parsed.duplicates.length) {
-    await prisma.indexUrl.createMany({
-      data: [
-        ...parsed.invalid.map((i) => ({
-          jobId: job.id,
-          url: i.raw,
-          status: "invalid",
-          engine,
-          message: i.reason,
-        })),
-        ...parsed.duplicates.map((u) => ({
-          jobId: job.id,
-          url: u,
-          status: "duplicate",
-          engine,
-          message: "Duplicate in submission",
-        })),
-      ],
-    });
+    await IndexUrl.insertMany([
+      ...parsed.invalid.map((i) => ({
+        jobId,
+        url: i.raw,
+        status: "invalid",
+        engine,
+        message: i.reason,
+      })),
+      ...parsed.duplicates.map((u) => ({
+        jobId,
+        url: u,
+        status: "duplicate",
+        engine,
+        message: "Duplicate in submission",
+      })),
+    ]);
   }
 
   if (toSubmit.length === 0) {
-    await prisma.indexJob.update({
-      where: { id: job.id },
-      data: { status: "done" },
-    });
-    return { ok: true as const, jobId: job.id };
+    await IndexJob.updateOne({ _id: job._id }, { $set: { status: "done" } });
+    return { ok: true as const, jobId };
   }
 
   // 4. Submit to the chosen engine(s).
@@ -98,42 +95,32 @@ export async function runIndexJob(params: {
   // 5. Persist per-URL results and tally.
   let submitted = 0;
   let failed = 0;
-  for (const url of toSubmit) {
+  const urlDocs = toSubmit.map((url) => {
     const r = resultsByUrl.get(url);
     const ok = r?.ok ?? false;
     if (ok) submitted++;
     else failed++;
-    await prisma.indexUrl.create({
-      data: {
-        jobId: job.id,
-        url,
-        status: ok ? "submitted" : "failed",
-        engine,
-        message: r?.message ?? "No response",
-      },
-    });
-  }
+    return {
+      jobId,
+      url,
+      status: ok ? "submitted" : "failed",
+      engine,
+      message: r?.message ?? "No response",
+    };
+  });
+  await IndexUrl.insertMany(urlDocs);
 
   // 6. Charge credits only for URLs we successfully submitted. In free mode we
   // record the job tally but never touch the user's credit balance.
   const creditsSpent = FREE_MODE ? 0 : submitted;
-  await prisma.$transaction([
-    ...(FREE_MODE
-      ? []
-      : [
-          prisma.user.update({
-            where: { id: userId },
-            data: { credits: { decrement: creditsSpent } },
-          }),
-          prisma.creditTransaction.create({
-            data: { userId, amount: -creditsSpent, reason: "indexing" },
-          }),
-        ]),
-    prisma.indexJob.update({
-      where: { id: job.id },
-      data: { submitted, failed, creditsSpent, status: "done" },
-    }),
-  ]);
+  if (!FREE_MODE && creditsSpent > 0) {
+    await User.updateOne({ _id: userId }, { $inc: { credits: -creditsSpent } });
+    await CreditTransaction.create({ userId, amount: -creditsSpent, reason: "indexing" });
+  }
+  await IndexJob.updateOne(
+    { _id: jobId },
+    { $set: { submitted, failed, creditsSpent, status: "done" } }
+  );
 
-  return { ok: true as const, jobId: job.id };
+  return { ok: true as const, jobId };
 }

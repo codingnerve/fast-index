@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { IndexJob, IndexUrl, isValidId } from "@/lib/models";
 import { getUserId } from "@/lib/auth";
 
 export async function GET(
@@ -10,14 +11,18 @@ export async function GET(
   if (!userId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+  if (!isValidId(params.id)) {
+    return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  }
 
-  const job = await prisma.indexJob.findFirst({
-    where: { id: params.id, userId },
-    include: { urls: { orderBy: { createdAt: "asc" } } },
-  });
+  await dbConnect();
+  const job = await IndexJob.findOne({ _id: params.id, userId });
   if (!job) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ job });
+  // No relational joins in MongoDB — fetch the job's URLs separately.
+  const urls = await IndexUrl.find({ jobId: params.id }).sort({ createdAt: 1 });
+
+  return NextResponse.json({ job: { ...job.toJSON(), urls } });
 }

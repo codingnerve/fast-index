@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { User } from "@/lib/models";
 import { verifyPassword, createSession } from "@/lib/auth";
 
 const schema = z.object({
@@ -16,11 +17,12 @@ export async function POST(req: Request) {
   }
 
   const { email, password } = parsed.data;
-  const user = await prisma.user.findUnique({ where: { email } });
+  await dbConnect();
+  const user = await User.findOne({ email });
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
   }
 
-  await createSession(user.id);
+  await createSession(String(user._id));
   return NextResponse.json({ ok: true });
 }

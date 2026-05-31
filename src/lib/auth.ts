@@ -4,7 +4,8 @@
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
-import { prisma } from "./db";
+import { dbConnect } from "./db";
+import { User, isValidId } from "./models";
 
 const COOKIE_NAME = "session";
 const secret = new TextEncoder().encode(
@@ -54,6 +55,7 @@ export async function getUserId(): Promise<string | null> {
 /** Returns the full current user, or null. */
 export async function getCurrentUser() {
   const id = await getUserId();
-  if (!id) return null;
-  return prisma.user.findUnique({ where: { id } });
+  if (!id || !isValidId(id)) return null;
+  await dbConnect();
+  return User.findById(id);
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { prisma } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { User, CreditTransaction, Payment } from "@/lib/models";
 
 // Razorpay webhook: verifies the HMAC signature, then credits the user on
 // payment capture. Configure the same secret in the Razorpay dashboard.
@@ -36,25 +37,25 @@ export async function POST(req: Request) {
 
   if (event.event === "payment.captured") {
     const { id: paymentId, order_id } = event.payload.payment.entity;
-    const payment = await prisma.payment.findUnique({
-      where: { razorpayOrderId: order_id },
-    });
+    await dbConnect();
 
-    // Idempotency: only credit once.
-    if (payment && payment.status !== "paid") {
-      await prisma.$transaction([
-        prisma.payment.update({
-          where: { id: payment.id },
-          data: { status: "paid", razorpayPaymentId: paymentId },
-        }),
-        prisma.user.update({
-          where: { id: payment.userId },
-          data: { credits: { increment: payment.credits } },
-        }),
-        prisma.creditTransaction.create({
-          data: { userId: payment.userId, amount: payment.credits, reason: "purchase" },
-        }),
-      ]);
+    // Idempotency: only credit once. Atomically flip created -> paid; if no
+    // document matched, it was already paid (or unknown), so we skip crediting.
+    const payment = await Payment.findOneAndUpdate(
+      { razorpayOrderId: order_id, status: { $ne: "paid" } },
+      { $set: { status: "paid", razorpayPaymentId: paymentId } }
+    );
+
+    if (payment) {
+      await User.updateOne(
+        { _id: payment.userId },
+        { $inc: { credits: payment.credits } }
+      );
+      await CreditTransaction.create({
+        userId: payment.userId,
+        amount: payment.credits,
+        reason: "purchase",
+      });
     }
   }
 

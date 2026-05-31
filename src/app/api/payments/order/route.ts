@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { User, CreditTransaction, Payment } from "@/lib/models";
 import { getUserId } from "@/lib/auth";
 import { getPlan } from "@/lib/plans";
 
@@ -28,27 +29,20 @@ export async function POST(req: Request) {
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
+  await dbConnect();
+
   // Dev fallback: if Razorpay isn't configured, grant credits immediately so
   // the flow is testable end-to-end without real keys.
   if (!keyId || !keySecret) {
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { id: userId },
-        data: { credits: { increment: plan.credits } },
-      }),
-      prisma.creditTransaction.create({
-        data: { userId, amount: plan.credits, reason: "purchase" },
-      }),
-      prisma.payment.create({
-        data: {
-          userId,
-          plan: plan.id,
-          amountPaise,
-          credits: plan.credits,
-          status: "paid",
-        },
-      }),
-    ]);
+    await User.updateOne({ _id: userId }, { $inc: { credits: plan.credits } });
+    await CreditTransaction.create({ userId, amount: plan.credits, reason: "purchase" });
+    await Payment.create({
+      userId,
+      plan: plan.id,
+      amountPaise,
+      credits: plan.credits,
+      status: "paid",
+    });
     return NextResponse.json({ devGranted: true, credits: plan.credits });
   }
 
@@ -71,15 +65,13 @@ export async function POST(req: Request) {
   }
 
   const order = (await res.json()) as { id: string };
-  await prisma.payment.create({
-    data: {
-      userId,
-      plan: plan.id,
-      amountPaise,
-      credits: plan.credits,
-      razorpayOrderId: order.id,
-      status: "created",
-    },
+  await Payment.create({
+    userId,
+    plan: plan.id,
+    amountPaise,
+    credits: plan.credits,
+    razorpayOrderId: order.id,
+    status: "created",
   });
 
   return NextResponse.json({

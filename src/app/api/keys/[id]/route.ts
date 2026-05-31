@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { ApiKey, isValidId } from "@/lib/models";
 import { getUserId } from "@/lib/auth";
 
 // Revoke an API key.
@@ -11,15 +12,16 @@ export async function DELETE(
   if (!userId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
-  const key = await prisma.apiKey.findFirst({
-    where: { id: params.id, userId },
-  });
-  if (!key) {
+  if (!isValidId(params.id)) {
     return NextResponse.json({ error: "Key not found" }, { status: 404 });
   }
-  await prisma.apiKey.update({
-    where: { id: key.id },
-    data: { revoked: true },
-  });
+  await dbConnect();
+  const result = await ApiKey.updateOne(
+    { _id: params.id, userId },
+    { $set: { revoked: true } }
+  );
+  if (result.matchedCount === 0) {
+    return NextResponse.json({ error: "Key not found" }, { status: 404 });
+  }
   return NextResponse.json({ ok: true });
 }
