@@ -3,6 +3,7 @@
 // Docs: https://www.indexnow.org/documentation
 
 import { groupByHost } from "./validate";
+import { BASE_URL } from "./config";
 
 const INDEXNOW_ENDPOINT = "https://api.indexnow.org/indexnow";
 
@@ -20,7 +21,11 @@ type IndexNowConfig = {
 function getConfig(): IndexNowConfig | null {
   const key = process.env.INDEXNOW_KEY;
   if (!key) return null;
-  return { key, keyLocation: process.env.INDEXNOW_KEY_LOCATION || undefined };
+  // Fall back to the app's own key endpoint, derived from BASE_URL, when an
+  // explicit INDEXNOW_KEY_LOCATION isn't provided.
+  const keyLocation =
+    process.env.INDEXNOW_KEY_LOCATION || `${BASE_URL}/api/indexnow-key`;
+  return { key, keyLocation };
 }
 
 function describeStatus(status: number): { ok: boolean; message: string } {

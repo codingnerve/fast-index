@@ -13,7 +13,11 @@
       "Bash(git push *)",
       "Bash(git rm *)",
       "Bash(rm -rf prisma)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(grep -q \"Ready\\\\|started server\\\\|Local:\" dev.log)",
+      "Bash(break)",
+      "Bash(curl -s -X POST http://localhost:3001/api/auth/signup -H \"Content-Type: application/json\" -d '{\"email\":\"test1@example.com\",\"password\":\"password123\",\"name\":\"Test\"}' -w \"\\\\nHTTP_STATUS=%{http_code}\\\\n\" --max-time 30)",
+      "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"test1@example.com\",\"password\":\"password123\"}' -w \"\\\\nHTTP_STATUS=%{http_code}\\\\n\" --max-time 30)"
     ]
   }
 }
